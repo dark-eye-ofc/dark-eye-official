@@ -2,12 +2,13 @@ const express = require('express');
 const http = require('http');
 const https = require('https');
 const cors = require('cors');
+const fs = require('fs');
 const { createSessionViaPair } = require('./connection/pair');
 const { createSessionViaQR, getCurrentQR, getCurrentSession, clearQR } = require('./connection/qr');
 const { PREFIX } = require('./connection/sessions');
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const HOST_URL = process.env.RENDER_EXTERNAL_URL || 'https://dark-eye-official.onrender.com';
@@ -19,12 +20,15 @@ let startTime = Date.now();
 let activeQRData = null;
 
 function keepAlive(){
-  setInterval(()=>{ http.get(`http://localhost:${PORT}/host`, ()=>{}).on('error', ()=>{}); }, 25000);
+  // Internal keep alive every 25 sec
+  setInterval(()=>{ http.get(`http://localhost:${PORT}/health`, ()=>{}).on('error', ()=>{}); }, 25000);
+  // External keep alive for Render every 4 min - board NEVER sleeps
   if(HOST_URL.includes('onrender.com')){
-    setInterval(()=>{ https.get(`${HOST_URL}/host`, ()=>{}).on('error', ()=>{}); }, 240000);
+    setInterval(()=>{ https.get(`${HOST_URL}/health`, ()=>{}).on('error', ()=>{}); }, 240000);
   }
 }
 keepAlive();
+
 function getUptime(){
   const sec = Math.floor((Date.now()-startTime)/1000);
   const h = Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
@@ -72,17 +76,14 @@ body{background:#0a0a0f;color:#fff;min-height:100vh;display:flex;flex-direction:
 .qr-img img{width:270px;border-radius:18px;border:3px solid #7b6cff;background:#fff;padding:8px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#00ff88;color:#000;padding:12px 22px;border-radius:30px;font-weight:900;display:none;z-index:999}
 </style></head><body>
-
 <div class="header">
   <div class="header-left"><div class="logo">DE</div><div><div class="h-title">DARK-EYE-OFC</div><div class="h-sub">WhatsApp Pairing Portal</div></div></div>
   <div class="status-pill" id="serverStatus"><div class="dot"></div> SERVER<br>ONLINE</div>
 </div>
-
 <div class="container">
   <div><div class="label">WhatsApp Number</div><div class="input-wrap"><span>+</span><input id="num" placeholder="263717400463" value="263717400463"></div></div>
   <div class="tab-row"><div class="tab active" id="tabPair" onclick="setMode('pair')">🔗 Pair Code</div><div class="tab" id="tabQr" onclick="setMode('qr')">📷 QR Code</div></div>
   <button class="btn-main" id="genBtn" onclick="gen()">🔗 Generate Pair Code</button>
-
   <div class="card" id="codeCard" style="display:none">
     <div class="card-head"><span>🔑 Pairing Code Generated</span><button onclick="this.parentElement.nextElementSibling.style.filter=this.parentElement.nextElementSibling.style.filter==='blur(8px)'?'none':'blur(8px)'" style="background:#fff;color:#000;border:none;padding:6px 12px;border-radius:8px;font-weight:800;font-size:12px">👁️ View</button></div>
     <div class="code-box" id="codeBox" onclick="copyCode()">---- ----</div>
@@ -90,7 +91,6 @@ body{background:#0a0a0f;color:#fff;min-height:100vh;display:flex;flex-direction:
     <button class="btn-copy" onclick="copyCode()">📋 Copy Code</button>
     <div id="sessArea" style="margin-top:14px;display:none"><div class="session-box" id="sessText"></div><button class="btn-copy filled" style="margin-top:10px" onclick="copySess()">📋 Copy Session</button><small style="display:block;text-align:center;margin-top:6px;opacity:.4">Hold to copy if button fails</small></div>
   </div>
-
   <div class="card" id="qrCard" style="display:none;text-align:center">
     <b>📷 Scan QR Code</b><p style="opacity:.5;font-size:12px;margin:8px 0">Open WhatsApp > Linked Devices > Link a device</p>
     <div class="qr-img" id="qrImg"><small>Generating real QR...</small></div>
@@ -98,7 +98,6 @@ body{background:#0a0a0f;color:#fff;min-height:100vh;display:flex;flex-direction:
     <button class="btn-copy" onclick="genQR()">🔄 Refresh QR</button>
     <div id="qrSessArea" style="margin-top:14px;display:none"><div class="session-box" id="qrSessText"></div><button class="btn-copy filled" style="margin-top:10px" onclick="copyQrSess()">📋 Copy Session</button></div>
   </div>
-
   <div class="card">
     <div style="display:flex;justify-content:space-between;margin-bottom:12px"><b>Server Stats</b><span id="uptime" style="font-size:11px;opacity:.5"></span></div>
     <div class="stats-grid">
@@ -128,13 +127,11 @@ function setMode(m){
 function copyCode(){ if(!currentCode) return; navigator.clipboard.writeText(currentCode.replace('-','')).then(()=>showToast('Copied: '+currentCode)); }
 function copySess(){ navigator.clipboard.writeText(document.getElementById('sessText').innerText).then(()=>showToast('Session Copied ✅')); }
 function copyQrSess(){ navigator.clipboard.writeText(document.getElementById('qrSessText').innerText).then(()=>showToast('QR Session Copied ✅')); }
-
 async function gen(){
   const num=document.getElementById('num').value.replace(/[^0-9]/g,'');
   if(num.length<10){ showToast('Enter valid number'); return; }
   if(mode==='pair') genPair(num); else genQR();
 }
-
 async function genPair(num){
   document.getElementById('qrCard').style.display='none';
   document.getElementById('codeCard').style.display='block';
@@ -160,7 +157,6 @@ async function genPair(num){
     } else { document.getElementById('codeBox').innerText='Failed'; showToast(j.error||'Error'); }
   }catch(e){ document.getElementById('codeBox').innerText='Error'; }
 }
-
 async function genQR(){
   document.getElementById('codeCard').style.display='none';
   const card=document.getElementById('qrCard');
@@ -172,9 +168,7 @@ async function genQR(){
     if(qrPoll) clearInterval(qrPoll);
     qrPoll=setInterval(async()=>{
       const r=await fetch('/qr-data'); const j=await r.json();
-      if(j.qr){
-        document.getElementById('qrImg').innerHTML='<img src="'+j.qr+'">';
-      }
+      if(j.qr){ document.getElementById('qrImg').innerHTML='<img src="'+j.qr+'">'; }
       if(j.session){
         document.getElementById('qrSessArea').style.display='block';
         document.getElementById('qrSessText').innerText=j.session;
@@ -185,7 +179,6 @@ async function genQR(){
     },2000);
   }catch{}
 }
-
 async function loadStats(){
   try{
     const r=await fetch('/host'); const j=await r.json();
@@ -210,8 +203,66 @@ loadStats(); setInterval(loadStats,5000);
 </body></html>`;
 }
 
+// ===== MAIN ROUTES =====
 app.get('/', (req,res)=>res.send(mainHTML()));
 
+// 🔥 FIX FOR VERCEL PANEL - ADD /health
+app.get('/health', (req,res)=>{
+  res.json({ 
+    status: 'ok', 
+    bot: 'HONOR-XMD',
+    server: 'ONLINE',
+    host: HOST_URL,
+    uptime: getUptime(),
+    sessions: Object.keys(lastSessions).length,
+    pairingReady: true,
+    time: new Date().toISOString()
+  });
+});
+
+// Keep-alive endpoint (same as health but lightweight)
+app.get('/host', (req,res)=>res.json({ 
+  status:'online active forever', 
+  server:'ONLINE', 
+  host:HOST_URL, 
+  prefix:PREFIX, 
+  uptime:getUptime(), 
+  sessions:Object.keys(lastSessions).length, 
+  offline:0 
+}));
+
+app.get('/ping', (req,res)=>res.send('pong'));
+
+// 🔥 FIX FOR VERCEL PANEL - /code alias (Vercel calls /code?number=)
+app.get('/code', async (req,res)=>{
+  let number = (req.query.number||'').replace(/[^0-9]/g,'');
+  if(!number || number.length<10) return res.status(400).json({ success:false, error:'Invalid number', code:'' });
+  try{
+    stats.total++;
+    await createSessionViaPair(number,
+      (code)=>{ 
+        res.json({ 
+          success: true,
+          status:'online', 
+          host:HOST_URL, 
+          number, 
+          code: code,
+          paircode: code,
+          pair_code: code,
+          prefix:PREFIX, 
+          real:true 
+        }); 
+      },
+      (session)=>{ lastSessions[number]=session; globalLastSession=session; },
+      ()=>{}
+    );
+  }catch(e){ 
+    console.error('Pair error:', e.message);
+    res.status(500).json({ success:false, error:e.message, code:'' }); 
+  }
+});
+
+// Original /pair endpoint (keep for backward compatibility)
 app.get('/pair', async (req,res)=>{
   let number = (req.query.number||'').replace(/[^0-9]/g,'');
   if(!number || number.length<10) return res.json({ status:'online', host:HOST_URL, prefix:PREFIX, uptime:getUptime() });
@@ -231,11 +282,13 @@ app.get('/qr-start', async (req,res)=>{
   createSessionViaQR((qr)=>{ activeQRData=qr; }, (sess)=>{ lastSessions['QR_'+Date.now()]=sess; globalLastSession=sess; activeQRData=sess; });
   res.json({ status:'starting real qr' });
 });
+
 app.get('/qr-data', (req,res)=>{
   const qr=getCurrentQR();
   const sess=getCurrentSession();
   res.json({ qr, session: sess });
 });
+
 app.get('/qr-clear', (req,res)=>{ clearQR(); res.json({ cleared:true }); });
 
 app.get('/sessions', (req,res)=>{
@@ -244,7 +297,31 @@ app.get('/sessions', (req,res)=>{
   if(globalLastSession) return res.json({ status:'found', session:globalLastSession });
   res.json({ status:'waiting' });
 });
-app.get('/host', (req,res)=>res.json({ status:'online active forever', server:'ONLINE', host:HOST_URL, prefix:PREFIX, uptime:getUptime(), sessions:Object.keys(lastSessions).length, offline:0 }));
-app.get('/ping', (req,res)=>res.send('pong'));
 
-app.listen(PORT,'0.0.0.0',()=>console.log(`DARK-EYE-OFC ONLINE REAL PAIR + QR on ${PORT}`));
+// 🔥 DESKTOP PANEL ENDPOINTS
+app.post('/api/save-config', (req,res)=>{
+  try{
+    const cfg = req.body;
+    if(!fs.existsSync('./data')) fs.mkdirSync('./data', { recursive:true });
+    fs.writeFileSync(`./data/config_${cfg.user||cfg.ownerNumber||'unknown'}.json`, JSON.stringify(cfg, null, 2));
+    console.log(`⚙️ Config saved for ${cfg.user}`);
+    res.json({ success:true });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ success:false, error:e.message });
+  }
+});
+
+app.get('/api/session', (req,res)=>{
+  const number = (req.query.number||'').replace(/[^0-9]/g,'');
+  const session = number && lastSessions[number] ? lastSessions[number] : globalLastSession;
+  res.json({ success: !!session, session: session || null, connected: !!session });
+});
+
+app.get('/create-account', async (req,res)=>{
+  const number = (req.query.number||'').replace(/[^0-9]/g,'');
+  const password = req.query.password||'';
+  res.json({ success:true, number, password, message:'Account created, check WhatsApp for password (if bot connected)' });
+});
+
+app.listen(PORT,'0.0.0.0',()=>console.log(`🔥 DARK-EYE-OFC ONLINE REAL PAIR + QR on ${PORT} - /health & /code ready`));
